@@ -5,8 +5,14 @@ import re
 import csv
 import pandas as pd
 from numpy import NAN
+from datetime import date
 URL = 'https://www.olx.pl/nieruchomosci/mieszkania/sprzedaz/lodz/'
 OTO_URL = 'https://www.otodom.pl/pl/oferty/sprzedaz/mieszkanie/lodz?by=LATEST&direction=DESC&limit=72&page='
+#TODO:
+# find all features in otodom form 
+
+
+
 
 class Bot:
 
@@ -16,6 +22,11 @@ class Bot:
 		f.close()
 		self.base_url = base_url_olx  # URL for searching
 		self.base_url_oto = base_url_otodom
+
+		today = date.today()
+		self.olx_filename = f'olx_{today}'
+		self.otodom_filename = f'otodom_{today}'
+
 
 
 	def search_olx(self):
@@ -27,41 +38,23 @@ class Bot:
 			dom = etree.HTML(str(soup))
 
 
-			olx = []
+			flat_list = []
 
 			for offer in dom.xpath('//*[@id="offers_table"]//h3/a/@href'):
 				#check if offer is on the olx site or otodom
 				if offer[13] != 't':
-					olx.append(offer)
+					flat_list.append(offer)
 
-
-			with open('data.csv', 'a') as f:
-				writer = csv.writer(f)
-
-
-				for offer in olx:
-
-					flat = self.flat_info_olx(offer)
-					if flat:
-						print(flat)
-						try:
-							writer.writerow(flat)
-						except:
-							print(f"Couldnt write {flat}")
-
-
-
+			self.write_flat_to_csv(flat_list, self.flat_info_olx, self.olx_filename)
 			i += 1
 			url = self.base_url + f'?page={i}'
 
 			page = get(url, allow_redirects=False)
-		colums = ['price', 'price_for_m2','floor','district', 'furniture','market',
+			colums = ['price', 'price_for_m2','floor','district', 'furniture','market',
 			'building','area', 'num_of_rooms', 'num_of_photos', 'description']
-		df = pd.read_csv('data.csv', header=None)
-		df.to_csv('data.csv', header=colums, index=True)
+			df = pd.read_csv('data.csv', header=None)
+			df.to_csv('data.csv', header=colums, index=True)
 
-	# TODO:
-	# error in district
 
 
 	def flat_info_olx(self, url):
@@ -131,36 +124,46 @@ class Bot:
 		return flat
 
 	def search_otodom(self):
-		i = 1
-		page = get(self.base_url_oto+'1')
+		i = 55
+		page = get(self.base_url_oto+'i')
 		soup = BeautifulSoup(page.content, "html.parser")
 
+		pattern = re.compile(r'<a class="css-137nx56 es62z2j27" data-cy="listing-item-link" data-cy-viewed="false" href="(.*)">')
 
-
-		while page.status_code == 200 and i <=3:
+		last_page = False
+		while page.status_code == 200:
 			soup = BeautifulSoup(page.content, "html.parser")
-			dom = etree.HTML(str(soup))
-
-			# with open('file.html', 'w') as f:
-			# 	f.write(soup.prettify())
-
-			otodom = []
+			s  =  re.compile(r"Niestety w naszej bazie nie mamy w tej chwili ogłoszeń")
 
 
+			for p in soup.find_all('p'):
+				for text in p:
+					if re.match(s, str(text)):
+						last_page = True
+			if last_page:
+				break
 
-			pattern = re.compile(r'<a class="css-137nx56 es62z2j27" data-cy="listing-item-link" data-cy-viewed="false" href="(.*)">')
+
+			flat_list = []
+
+
 			for m in re.finditer(pattern, str(soup.prettify())):
-				otodom.append('https://www.otodom.pl' + m.group(1))
-			print(f'PAGE {i}  !!!!!!!!!')
-			print(otodom)
+				flat_list.append('https://www.otodom.pl' + m.group(1))
+
+			self.write_flat_to_csv(flat_list, self.flat_info_otodom, self.otodom_filename)
 			i = i+1
 			url = self.base_url_oto + f'{i}'
 			print(url)
 			page = get(url, allow_redirects=False)
 
+			self.flat_info_otodom()
+
+		print('HELLO')
 
 
-	def get_feature_olx(self, pattern:str ,offer: str):
+
+
+	def get_feature_olx(self,pattern,offer):
 		try:
 			return re.match(pattern,offer).group(1)
 		except AttributeError:
@@ -171,12 +174,26 @@ class Bot:
 
 
 	def flat_info_otodom(self):
+
 		pass
 
+
+	def write_flat_to_csv(self, flats, flat_info, filename):
+		with open(filename, 'a') as f:
+			writer = csv.writer(f)
+
+			for flat in flats:
+				flat = flat_info(flat)
+				if flat:
+					print(flat)
+					try:
+						writer.writerow(flat)
+					except:
+						print(f"Couldnt write {flat}")
 
 
 
 if '__main__' == __name__:
 
   bot = Bot()
-  bot.search_otodom()
+  bot.search_olx()
