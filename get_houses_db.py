@@ -158,7 +158,6 @@ class Bot:
 
 			self.flat_info_otodom()
 
-		print('HELLO')
 
 
 
